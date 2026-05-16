@@ -1,0 +1,124 @@
+import pygame, socket, json
+
+pygame.init()
+WIDTH, HEIGHT = 400, 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+clock = pygame.time.Clock()
+
+font = pygame.font.SysFont(None, 30)
+big = pygame.font.SysFont(None, 50)
+
+ip = ""
+connected = False
+client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+player_id = None
+state = {}
+
+start_btn = pygame.Rect(WIDTH//2-60, HEIGHT//2, 120, 50)
+ready = False
+
+while True:
+    screen.fill((135,206,235))
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            pygame.quit(); exit()
+
+        if not connected and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RETURN:
+                try:
+                    client.connect((ip,5556))
+                    player_id = client.recv(1024).decode()
+                    connected = True
+                except:
+                    ip = ""
+            elif event.key == pygame.K_BACKSPACE:
+                ip = ip[:-1]
+            else:
+                ip += event.unicode
+
+        if connected and event.type == pygame.MOUSEBUTTONDOWN:
+            if not ready and start_btn.collidepoint(event.pos):
+                ready = True
+
+    if not connected:
+        screen.blit(font.render("Enter IP:",True,(0,0,0)),(150,200))
+        pygame.draw.rect(screen,(255,255,255),(80,250,240,40))
+        screen.blit(font.render(ip,True,(0,0,0)),(90,260))
+
+    else:
+        mx,_ = pygame.mouse.get_pos()
+        data = {"x": mx}
+        if ready:
+            data["ready"] = True
+
+        try:
+            client.send(json.dumps(data).encode())
+            state = json.loads(client.recv(4096).decode())
+        except:
+            continue
+
+        # --- SAFE PLAYER FETCH ---
+        if "players" not in state or player_id not in state["players"]:
+            continue
+
+        me = state["players"][player_id]
+        other_id = "1" if player_id == "0" else "0"
+
+        other = None
+        if other_id in state["players"]:
+            other = state["players"][other_id]
+
+        # --- START SCREEN ---
+        if not state["started"]:
+            pygame.draw.rect(screen,(0,255,0),start_btn)
+            screen.blit(font.render("START",True,(0,0,0)),(start_btn.x+25,start_btn.y+15))
+
+            if ready and (other is None or not other["ready"]):
+                screen.blit(font.render("Waiting for opponent...",True,(0,0,0)),(90,200))
+
+            if other is not None and other["ready"] and not ready:
+                screen.blit(font.render("Opponent ready!",True,(0,0,0)),(120,200))
+
+        else:
+            # --- DRAW OBSTACLES ---
+            for o in state["obs"]:
+                pygame.draw.rect(screen,(0,0,0),(o["x"],o["y"],50,50))
+
+            # --- DRAW COINS ---
+            for c in state["coins"]:
+                pygame.draw.rect(screen,(255,215,0),(c["x"],c["y"],20,20))
+
+            # --- DRAW SELF ---
+            pygame.draw.rect(screen,(0,0,0),(me["x"],450,35,60))
+
+            # --- DRAW OPPONENT (FIXED) ---
+            if other is not None:
+                pygame.draw.rect(screen,(255,165,0),(other["x"],450,35,60))
+
+            # --- HP UI ---
+            for i in range(me["hp"]):
+                pygame.draw.rect(screen,(255,0,0),(10+i*25,10,20,20))
+
+            if other is not None:
+                for i in range(other["hp"]):
+                    pygame.draw.rect(screen,(255,0,0),(WIDTH-80+i*25,10,20,20))
+
+            # --- SCORES ---
+            screen.blit(font.render(f"{me['score']}",True,(0,0,0)),(10,40))
+
+            if other is not None:
+                screen.blit(font.render(f"{other['score']}",True,(0,0,0)),(WIDTH-60,40))
+
+        # --- WIN SCREEN ---
+        if state["winner"] is not None:
+            if state["winner"] == player_id:
+                text = "YOU WIN"
+            else:
+                text = "YOU LOSE"
+
+            screen.blit(big.render(text,True,(0,0,0)),(120,250))
+
+    pygame.display.update()
+    clock.tick(60)
