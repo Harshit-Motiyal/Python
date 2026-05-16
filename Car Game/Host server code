@@ -1,0 +1,122 @@
+import socket, threading, json, random, time
+
+HOST = "0.0.0.0"
+PORT = 5556
+
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind((HOST, PORT))
+server.listen(2)
+
+clients = {}
+inputs = {}
+
+game = {
+    "players": {
+        "0": {"x": 200, "hp": 3, "score": 0, "ready": False},
+        "1": {"x": 200, "hp": 3, "score": 0, "ready": False}
+    },
+    "obs": [
+        {"x": random.randint(20,380), "y": -50},
+        {"x": random.randint(20,380), "y": -150}
+    ],
+    "coins": [],
+    "started": False,
+    "winner": None
+}
+
+def client_thread(conn, pid):
+    conn.send(pid.encode())
+    while True:
+        try:
+            data = json.loads(conn.recv(1024).decode())
+            inputs[pid] = data
+        except:
+            break
+    conn.close()
+
+def game_loop():
+    while True:
+        # --- READY SYSTEM ---
+        if not game["started"]:
+            if game["players"]["0"]["ready"] and game["players"]["1"]["ready"]:
+                game["started"] = True
+
+        # --- UPDATE INPUT ---
+        for pid in inputs:
+            game["players"][pid]["x"] = inputs[pid]["x"]
+            if "ready" in inputs[pid]:
+                game["players"][pid]["ready"] = True
+
+        if game["started"] and game["winner"] is None:
+
+            # --- SPEED SYSTEM (same as your original) ---
+            max_score = max(game["players"]["0"]["score"], game["players"]["1"]["score"])
+            speed = 10
+            if max_score >= 30: speed = 15
+            if max_score >= 100: speed = 20
+            if max_score >= 300: speed = 25
+            if max_score >= 500: speed = 30
+
+            # --- OBSTACLES ---
+            for o in game["obs"]:
+                o["y"] += speed
+                if o["y"] > 650:
+                    o["y"] = -50
+                    o["x"] = random.randint(20,380)
+                    for p in game["players"].values():
+                        p["score"] += 2
+
+            # --- COINS ---
+            if len(game["coins"]) < 15 and max_score < 500:
+                if random.randint(1,200) == 1:
+                    game["coins"].append({"x": random.randint(20,380), "y": -50})
+
+            for c in game["coins"]:
+                c["y"] += speed
+
+            # --- COLLISIONS ---
+            p0 = game["players"]["0"]
+            p1 = game["players"]["1"]
+
+            # player collision
+            if abs(p0["x"] - p1["x"]) < 35:
+                p0["score"] -= 2
+                p1["score"] -= 2
+
+            for pid, p in game["players"].items():
+                for o in game["obs"]:
+                    if abs(p["x"] - o["x"]) < 40 and 450 < o["y"] < 510:
+                        p["hp"] -= 1
+                        o["y"] = -50
+
+                for c in game["coins"][:]:
+                    if abs(p["x"] - c["x"]) < 30 and 450 < c["y"] < 510:
+                        p["score"] += 4
+                        game["coins"].remove(c)
+
+            # --- WIN CONDITION ---
+            if p0["hp"] <= 0:
+                game["winner"] = "1"
+            if p1["hp"] <= 0:
+                game["winner"] = "0"
+
+        # send state
+        for conn in clients.values():
+            try:
+                conn.send(json.dumps(game).encode())
+            except:
+                pass
+
+        time.sleep(1/60)
+
+# accept 2 players
+pid = 0
+while pid < 2:
+    conn, addr = server.accept()
+    clients[str(pid)] = conn
+    threading.Thread(target=client_thread, args=(conn, str(pid))).start()
+    pid += 1
+
+threading.Thread(target=game_loop).start()
+print("Server running...")
