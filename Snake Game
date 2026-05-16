@@ -1,0 +1,243 @@
+import turtle
+import time
+import random
+
+# Screen setup
+screen = turtle.Screen()
+screen.title("Snake Game by Harshit")
+screen.bgcolor("black")
+screen.setup(width=600, height=600)
+screen.tracer(0)
+
+# Game state
+game_state = "start"
+lives = 3
+score = 0
+
+# UI
+ui = turtle.Turtle()
+ui.hideturtle()
+ui.penup()
+
+# Stars
+stars = []
+
+def create_stars():
+    for _ in range(60):
+        star = turtle.Turtle()
+        star.shape("circle")
+        star.color("white")
+        star.shapesize(0.1, 0.1)
+        star.penup()
+        star.goto(random.randint(-300,300), random.randint(-300,300))
+        stars.append(star)
+
+def clear_stars():
+    for s in stars:
+        s.hideturtle()
+    stars.clear()
+
+# 🔵 Rounded Button Function
+def draw_rounded_button(x, y, width, height, radius, text):
+    ui.goto(x + radius, y)
+    ui.pendown()
+    ui.color("white", "silver")
+    ui.begin_fill()
+
+    for _ in range(2):
+        ui.forward(width - 2*radius)
+        ui.circle(radius, 90)
+        ui.forward(height - 2*radius)
+        ui.circle(radius, 90)
+
+    ui.end_fill()
+    ui.penup()
+
+    ui.goto(x + width/2, y + height/2 - 10)
+    ui.color("black")
+    ui.write(text, align="center", font=("Arial", 16, "bold"))
+
+# Start / Restart Screen
+def draw_screen(title, button_text):
+    ui.clear()
+
+    head.hideturtle()
+    food.hideturtle()
+    for s in segments:
+        s.hideturtle()
+
+    ui.goto(0, 100)
+    ui.color("white")
+    ui.write(title, align="center", font=("Arial", 24, "bold"))
+
+    draw_rounded_button(-90, -25, 180, 50, 20, button_text)
+
+def click_handler(x, y):
+    global game_state, lives, score
+
+    if -90 < x < 90 and -25 < y < 25:
+        if game_state in ["start", "game_over"]:
+            ui.clear()
+            game_state = "play"
+            lives = 3
+            score = 0
+            reset_game()
+
+            head.showturtle()
+            food.showturtle()
+
+screen.onclick(click_handler)
+
+# Snake
+head = turtle.Turtle()
+head.shape("square")
+head.color("green")
+head.penup()
+head.goto(0, 0)
+head.dx = 0
+head.dy = 0
+
+# Food
+food = turtle.Turtle()
+food.shape("circle")
+food.color("red")
+food.penup()
+
+# Body
+segments = []
+
+# Score
+score_pen = turtle.Turtle()
+score_pen.hideturtle()
+score_pen.penup()
+score_pen.color("white")
+score_pen.goto(-280, 260)
+
+# Lives
+life_icons = []
+
+def draw_lives():
+    for l in life_icons:
+        l.hideturtle()
+    life_icons.clear()
+
+    for i in range(lives):
+        life = turtle.Turtle()
+        life.shape("square")
+        life.color("red")
+        life.penup()
+        life.goto(200 + i*25, 260)
+        life_icons.append(life)
+
+def update_score():
+    score_pen.clear()
+    score_pen.write(f"Score: {score}", align="left", font=("Arial", 14, "bold"))
+
+# Smooth movement
+STEP = 10
+
+def go_up():
+    if head.dy == 0:
+        head.dx = 0
+        head.dy = STEP
+
+def go_down():
+    if head.dy == 0:
+        head.dx = 0
+        head.dy = -STEP
+
+def go_left():
+    if head.dx == 0:
+        head.dx = -STEP
+        head.dy = 0
+
+def go_right():
+    if head.dx == 0:
+        head.dx = STEP
+        head.dy = 0
+
+def move():
+    head.setx(head.xcor() + head.dx)
+    head.sety(head.ycor() + head.dy)
+
+# Controls
+screen.listen()
+screen.onkeypress(go_up, "Up")
+screen.onkeypress(go_down, "Down")
+screen.onkeypress(go_left, "Left")
+screen.onkeypress(go_right, "Right")
+
+# Reset
+def reset_game():
+    head.goto(0, 0)
+    head.dx = 0
+    head.dy = 0
+
+    for s in segments:
+        s.goto(1000, 1000)
+    segments.clear()
+
+    food.goto(random.randint(-280,280), random.randint(-280,280))
+
+    clear_stars()
+    create_stars()
+
+# Start screen
+draw_screen("Snake Game by Harshit", "START")
+
+# Game loop
+while True:
+    screen.update()
+
+    if game_state != "play":
+        continue
+
+    time.sleep(0.03)
+
+    update_score()
+    draw_lives()
+
+    move()
+
+    # Border collision
+    if abs(head.xcor()) > 290 or abs(head.ycor()) > 290:
+        lives -= 1
+        reset_game()
+
+        if lives == 0:
+            game_state = "game_over"
+            clear_stars()
+            draw_screen("GAME OVER", "RESTART")
+        continue
+
+    # Food collision (FIXED)
+    if head.distance(food) < 15:
+        food.goto(random.randint(-280,280), random.randint(-280,280))
+
+        new = turtle.Turtle()
+        new.shape("square")
+        new.color("white")
+        new.penup()
+        segments.append(new)
+
+        score += 1
+        continue  # 🔥 prevents life bug
+
+    # Body follow (FIXED)
+    for i in range(len(segments) - 1, 0, -1):
+        segments[i].goto(segments[i - 1].xcor(), segments[i - 1].ycor())
+
+    if len(segments) > 0:
+        segments[0].goto(head.xcor(), head.ycor())
+
+    # Self collision
+    for s in segments:
+        if s.distance(head) < 15:
+            lives -= 1
+            reset_game()
+
+            if lives == 0:
+                game_state = "game_over"
+                clear_stars()
+                draw_screen("GAME OVER", "RESTART")
+            break
